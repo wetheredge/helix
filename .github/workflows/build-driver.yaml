@@ -1,0 +1,98 @@
+name: Build driver branch
+on:
+  push:
+    branches:
+      - driver
+  workflow_dispatch:
+
+jobs:
+  # Taken from upstream release workflow
+  fetch-grammars:
+    name: Fetch Grammars
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Fetch tree-sitter grammars
+        run: cargo run --package=helix-loader --bin=hx-loader
+
+      - name: Bundle grammars
+        run: tar cJf grammars.tar.xz -C runtime/grammars/sources .
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: grammars
+          path: grammars.tar.xz
+
+  # Adapted from dist job in upstream release workflow
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [fetch-grammars]
+    strategy:
+      matrix:
+        include:
+        - build: x86_64-linux
+          os: ubuntu-latest
+          rust: stable
+          target: x86_64-unknown-linux-gnu
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Download grammars
+        uses: actions/download-artifact@v3
+
+      - name: Move grammars under runtime
+        if: "!startsWith(runner.os, 'windows')"
+        run: |
+          mkdir -p runtime/grammars/sources
+          tar xJf grammars/grammars.tar.xz -C runtime/grammars/sources
+
+      # The rust-toolchain action ignores rust-toolchain.toml files.
+      # Removing this before building with cargo ensures that the rust-toolchain
+      # is considered the same between installation and usage.
+      - name: Remove the rust-toolchain.toml file
+        run: rm rust-toolchain.toml
+
+      - name: Install ${{ matrix.rust }} toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
+
+      - name: Set profile.release.strip = true
+        shell: bash
+        run: |
+          cat >> .cargo/config.toml <<EOF
+          [profile.release]
+          strip = true
+          EOF
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows-2019" ]; then
+            cp "target/${{ matrix.target }}/release/hx.exe" "dist/"
+          else
+            cp "target/${{ matrix.target }}/release/hx" "dist/"
+          fi
+          if [ -d runtime/grammars/sources ]; then
+            rm -rf runtime/grammars/sources
+          fi
+          cp -r runtime dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bins-${{ matrix.build }}
+          path: dist
