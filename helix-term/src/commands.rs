@@ -37,10 +37,7 @@ use helix_core::{
     regex::{self, Regex},
     search::{self, CharMatcher},
     selection, surround,
-    syntax::{
-        self,
-        config::{BlockCommentToken, LanguageServerFeature},
-    },
+    syntax::config::{BlockCommentToken, LanguageServerFeature},
     text_annotations::{Overlay, TextAnnotations},
     textobject,
     unicode::width::UnicodeWidthChar,
@@ -5257,7 +5254,7 @@ type CommentTransaction = fn(
     doc_line_token: Option<&str>,
     doc_block_tokens: Option<&[BlockCommentToken]>,
     syntax: Option<&Syntax>,
-    loader: &syntax::Loader,
+    loader: &helix_core::syntax::Loader,
 ) -> Transaction;
 
 /// Commenting behavior, for each range in selection:
